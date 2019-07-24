@@ -1,13 +1,38 @@
 package main
 
 import (
+	"log"
+	"github.com/nevermosby/"
 	"github.com/gin-gonic/gin"
 )
 
 func setupRouter() *gin.Engine {
 	r := gin.Default()
 	r.GET("/ping", func(c *gin.Context) {
-		c.String(200, "pong")
+		log.Println("ping...")
+		// TODO: make the return object as  a struct and unmarshall it to json
+		rsp := CreateResponse{
+			Username: r.Username,
+		}
+	
+		c.JSON(200, gin.H{
+			"code":  0,
+			"message": "pongpongpong",
+		})
+	})
+	r.GET("/search/:keyword",func(c *gin.Context) {
+		token := c.Request.Header.Get("Authorization")
+		log.Println("token",token)
+		if token != nil {
+
+		}
+
+		c.JSON(401, gin.H{
+			"code": 1,
+			"message": "",
+		})
+		name
+
 	})
 	return r
 }
@@ -15,8 +40,8 @@ func setupRouter() *gin.Engine {
 func main() {
 	r := setupRouter()
 	r.Run(":8080")
+	log.Println("Started...")
 }
-
 
 //package main
 //
