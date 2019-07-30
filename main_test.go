@@ -22,8 +22,8 @@ func TestPingRoute(t *testing.T) {
 func TestNotFound(t *testing.T) {
 	router := setupRouter()
 	w := httptest.NewRecorder()
-	req,_ := http.NewRequest("GET","/",nil)
-	router.ServeHTTP(w,req)
+	req, _ := http.NewRequest("GET", "/", nil)
+	router.ServeHTTP(w, req)
 	assert.Equal(t, 404, w.Code)
 	assert.Equal(t, "404 page not found", w.Body.String())
 }

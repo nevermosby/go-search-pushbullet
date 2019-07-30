@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"apiserver/pkg/errno"
+	"github.com/nevermosby/go-search-pushbullet/errno"
 
 	"github.com/gin-gonic/gin"
 )
