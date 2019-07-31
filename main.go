@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 var (
@@ -36,6 +37,61 @@ func main() {
 	log.Debugln("Started...")
 }
 
+func fetchPushes() *pb.Pushes {
+	var cursor string
+	var retPushes pb.Pushes
+	var pushesResponse pb.Pushes
+
+	// build the http client
+	transPort := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		//TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	// create new http client with the defined transport above
+	client := &http.Client{Transport: transPort}
+	req, err := http.NewRequest("GET", viper.GetString("pb_push_url"), nil)
+	if err != nil {
+		log.Errorln(err)
+		os.Exit(1)
+	}
+	req.Header.Set("Access-Token", viper.GetString("pb_token"))
+
+	// loop
+	loop := viper.GetInt("pb_push_loop")
+	for i := 0; i <= loop; i++ {
+		log.Debugln("enter loop:", i)
+		log.Debugln("current cursor:", cursor)
+		if i > 0 {
+			time.Sleep(2 * time.Second)
+		}
+		q := req.URL.Query()
+		q.Del("cursor")
+		q.Add("cursor", cursor)
+		req.URL.RawQuery = q.Encode()
+		resp, err := client.Do(req)
+
+		if err != nil {
+			log.Errorln(err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		dec := json.NewDecoder(resp.Body)
+		err = dec.Decode(&pushesResponse)
+		if err != nil {
+			log.Errorln(err)
+			os.Exit(1)
+		}
+		log.Debugln("new cursor:", pushesResponse.Cursor)
+		cursor = pushesResponse.Cursor
+		retPushes.PushItems = append(retPushes.PushItems, pushesResponse.PushItems...)
+		log.Debugln("return pushes size:", len(retPushes.PushItems))
+
+	}
+
+	return &retPushes
+}
+
 // checkInnerToken for check inner token as entry
 func checkInnerToken(c *gin.Context) bool {
 	token := c.Request.Header.Get("Authorization")
@@ -55,7 +111,7 @@ func checkInnerToken(c *gin.Context) bool {
 func findMatchedPush(pushes *pb.Pushes, keyword string) *pb.Pushes {
 	var retPushes pb.Pushes
 	for _, ele := range pushes.PushItems {
-		if strings.Contains(strings.ToLower(ele.Body), keyword) || strings.Contains(strings.ToLower(ele.Title), keyword) {
+		if strings.Contains(strings.ToLower(ele.Body), keyword) || strings.Contains(strings.ToLower(ele.Title), keyword) || strings.Contains(strings.ToLower(ele.URL), keyword) {
 			retPushes.PushItems = append(retPushes.PushItems, ele)
 		}
 	}
@@ -124,40 +180,9 @@ func setupRouter() *gin.Engine {
 		keyword := c.Param("keyword")
 		if keyword != "" {
 			log.Debugln("keyword", keyword)
-			// var ret string
-			// call the pushbullet api
-			// build http client for adding token
-			transPort := &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-				//TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			}
-			// create new http client with the defined transport above
-			client := &http.Client{Transport: transPort}
-			req, err := http.NewRequest("GET", viper.GetString("pb_push_url"), nil)
-			if err != nil {
-				log.Errorln(err)
-				os.Exit(1)
-			}
-			req.Header.Set("Access-Token", viper.GetString("pb_token"))
-			resp, err := client.Do(req)
-
-			if err != nil {
-				log.Errorln(err)
-				os.Exit(1)
-			}
-			defer resp.Body.Close()
-
-			// body, err := ioutil.ReadAll(resp.Body)
-			var pushesResponse pb.Pushes
-			dec := json.NewDecoder(resp.Body)
-			err = dec.Decode(&pushesResponse)
-			// err = json.Unmarshal(resp.Body, &userResponse)
-			if err != nil {
-				log.Errorln(err)
-				os.Exit(1)
-			}
+			pushesResponse := fetchPushes()
 			log.Debugln("push responose:", len(pushesResponse.PushItems))
-			retPushesItems := findMatchedPush(&pushesResponse, keyword)
+			retPushesItems := findMatchedPush(pushesResponse, keyword)
 			c.JSON(200, gin.H{
 				"code":    0,
 				"message": retPushesItems,

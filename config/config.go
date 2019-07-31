@@ -1,11 +1,9 @@
 package config
 
 import (
-	_ "bufio"
 	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	_ "os"
 	"strings"
 )
 
