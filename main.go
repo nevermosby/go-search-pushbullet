@@ -1,21 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/nevermosby/go-search-pushbullet/config"
+	pb "github.com/nevermosby/go-search-pushbullet/pushbullet"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 )
-
-// const vars
-// const (
-// 	PB_TOKEN    = ""
-// 	PB_PUSH_URL = "https://api.pushbullet.com/v2/pushes"
-// )
 
 var (
 	cfg = pflag.StringP("config", "c", "", "config file path")
@@ -40,6 +36,32 @@ func main() {
 	log.Debugln("Started...")
 }
 
+// checkInnerToken for check inner token as entry
+func checkInnerToken(c *gin.Context) bool {
+	token := c.Request.Header.Get("Authorization")
+	// entry validation
+	if token == viper.GetString("inner_token") {
+		return true
+	}
+	log.Println("token", token)
+	c.JSON(401, gin.H{
+		"code":    1,
+		"message": "wrong inner token",
+	})
+	return false
+}
+
+// findMatchedPush for return the matched push item with keyword
+func findMatchedPush(pushes *pb.Pushes, keyword string) *pb.Pushes {
+	var retPushes pb.Pushes
+	for _, ele := range pushes.PushItems {
+		if strings.Contains(strings.ToLower(ele.Body), keyword) || strings.Contains(strings.ToLower(ele.Title), keyword) {
+			retPushes.PushItems = append(retPushes.PushItems, ele)
+		}
+	}
+	return &retPushes
+}
+
 // setup the router engine
 func setupRouter() *gin.Engine {
 	r := gin.Default()
@@ -53,23 +75,56 @@ func setupRouter() *gin.Engine {
 		})
 	})
 
-	// search for keyword
-	r.GET("/search/:keyword", func(c *gin.Context) {
-		token := c.Request.Header.Get("Authorization")
-		// entry validation
-		if token == viper.GetString("inner_token") {
+	r.GET("/pb/me", func(c *gin.Context) {
+		ret := checkInnerToken(c)
+		if !ret {
+			return
+		}
+		// call the pushbullet api
+		// build http client for adding token
+		transPort := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			//TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		// create new http client with the defined transport above
+		client := &http.Client{Transport: transPort}
+		req, err := http.NewRequest("GET", viper.GetString("pb_me_url"), nil)
+		if err != nil {
+			log.Errorln(err)
+			os.Exit(1)
+		}
+		req.Header.Set("Access-Token", viper.GetString("pb_token"))
+		resp, err := client.Do(req)
 
-		} else {
-			log.Println("token", token)
-			c.JSON(401, gin.H{
-				"code":    1,
-				"message": "wrong inner token",
-			})
+		if err != nil {
+			log.Errorln(err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+		var userResponse pb.User
+		dec := json.NewDecoder(resp.Body)
+		err = dec.Decode(&userResponse)
+		if err != nil {
+			log.Errorln(err)
+			os.Exit(1)
+		}
+		log.Debugln("user responose: %v", &userResponse)
+		c.JSON(200, gin.H{
+			"code":    0,
+			"message": &userResponse,
+		})
+	})
+
+	// search for keyword
+	r.GET("/pb/search/:keyword", func(c *gin.Context) {
+		ret := checkInnerToken(c)
+		if !ret {
+			return
 		}
 		keyword := c.Param("keyword")
 		if keyword != "" {
 			log.Debugln("keyword", keyword)
-			var ret string
+			// var ret string
 			// call the pushbullet api
 			// build http client for adding token
 			transPort := &http.Transport{
@@ -91,17 +146,21 @@ func setupRouter() *gin.Engine {
 				os.Exit(1)
 			}
 			defer resp.Body.Close()
-			body, err := ioutil.ReadAll(resp.Body)
+
+			// body, err := ioutil.ReadAll(resp.Body)
+			var pushesResponse pb.Pushes
+			dec := json.NewDecoder(resp.Body)
+			err = dec.Decode(&pushesResponse)
+			// err = json.Unmarshal(resp.Body, &userResponse)
 			if err != nil {
 				log.Errorln(err)
 				os.Exit(1)
 			}
-			//log.Println("return body", body)
-			// TODO: make the return object as  a struct and unmarshall it to json
-			ret = string(body)
+			log.Debugln("push responose:", len(pushesResponse.PushItems))
+			retPushesItems := findMatchedPush(&pushesResponse, keyword)
 			c.JSON(200, gin.H{
 				"code":    0,
-				"message": ret,
+				"message": retPushesItems,
 			})
 		} else {
 			c.JSON(400, gin.H{
@@ -110,5 +169,6 @@ func setupRouter() *gin.Engine {
 			})
 		}
 	})
+
 	return r
 }
