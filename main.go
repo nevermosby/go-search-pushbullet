@@ -96,7 +96,7 @@ func fetchPushes() *pb.Pushes {
 func checkInnerToken(c *gin.Context) bool {
 	token := c.Request.Header.Get("Authorization")
 	// entry validation
-	if token == viper.GetString("inner_token") {
+	if token != "" && token == viper.GetString("inner_token") {
 		return true
 	}
 	log.Println("token", token)
@@ -164,7 +164,7 @@ func setupRouter() *gin.Engine {
 			log.Errorln(err)
 			os.Exit(1)
 		}
-		log.Debugln("user responose: %v", &userResponse)
+		log.Debugln("user responose:", &userResponse)
 		c.JSON(200, gin.H{
 			"code":    0,
 			"message": &userResponse,
